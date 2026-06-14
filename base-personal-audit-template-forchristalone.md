@@ -1,5 +1,5 @@
 ---
-title: TSwap Audit Report
+title: ThunderLoan Audit Report
 author: Emmanuel Orimadegun
 date: June 10, 2026
 ---
@@ -8,9 +8,9 @@ date: June 10, 2026
 <div class="cover-page" style="text-align: center; page-break-after: always; padding-top: 5cm; box-sizing: border-box;">
   
   <!-- Relative path to your logo (Centered perfectly with fixed margin syntax) -->
-  <img src="./logo.png" style="width: 50%; margin: 0 auto 2cm auto; display: block;" alt="Logo">
+  <!-- <img src="./logo.png" style="width: 50%; margin: 0 auto 2cm auto; display: block;" alt="Logo"> -->
 
-  <h1 style="font-size: 3rem; font-weight: bold; margin-bottom: 1cm;">TSwap Audit Report</h1>
+  <h1 style="font-size: 3rem; font-weight: bold; margin-bottom: 1cm;">ThunderLoan Audit Report</h1>
   
   <p style="font-size: 1.5rem; margin-bottom: 2cm;">Version 1.0</p>
   
@@ -35,36 +35,51 @@ date: June 10, 2026
 
 - [Table of Contents](#table-of-contents)
 - [Protocol Summary](#protocol-summary)
-  - [Puppy Raffle](#puppy-raffle)
+  - [ThunderLoan](#thunderloan)
 - [Disclaimer](#disclaimer)
 - [Risk Classification](#risk-classification)
 - [Audit Details](#audit-details)
   - [Repo](#repo)
   - [Scope](#scope)
+  - [Roles](#roles)
   - [Issues found](#issues-found)
 - [Findings](#findings)
   - [HIGH](#high)
-    - [\[H-1\]](#h-1)
+    - [\[H-1\]  Mixing up variable location causes storage collisions in `ThunderLoan::s_flashLoanFee` and `ThunderLoan::s_currentlyFlashLoaning`](#h-1--mixing-up-variable-location-causes-storage-collisions-in-thunderloans_flashloanfee-and-thunderloans_currentlyflashloaning)
+    - [\[H-2\]  Unnecessary `updateExchangeRate` in `deposit` function incorrectly updates `exchangeRate` preventing withdraws and unfairly changing reward distribution](#h-2--unnecessary-updateexchangerate-in-deposit-function-incorrectly-updates-exchangerate-preventing-withdraws-and-unfairly-changing-reward-distribution)
+    - [\[H-3\]  By calling a flashloan and then `ThunderLoan::deposit` instead of `ThunderLoan::repay` users can steal all funds from the protocol](#h-3--by-calling-a-flashloan-and-then-thunderloandeposit-instead-of-thunderloanrepay-users-can-steal-all-funds-from-the-protocol)
+    - [\[H-4\]  getPricceofOnePoolTokenInWeth uses the TSwap price which doesn't accout for decimals also fee precision is 18 decimals](#h-4--getpricceofonepooltokeninweth-uses-the-tswap-price-which-doesnt-accout-for-decimals-also-fee-precision-is-18-decimals)
   - [MEDIUM](#medium)
-    - [\[M-1\]](#m-1)
+    - [\[M-1\]  Centralization risk for trusted owners](#m-1--centralization-risk-for-trusted-owners)
+    - [Impact:](#impact)
+    - [\[M-2\]  Centralized owners can brick redemptions by disapproving of  specific token](#m-2--centralized-owners-can-brick-redemptions-by-disapproving-of--specific-token)
+    - [\[M-3\]  Fee on transfer, rebase etc.](#m-3--fee-on-transfer-rebase-etc)
   - [LOW](#low)
-    - [\[L-1\]](#l-1)
-  - [Informational / Non-Critical](#informational--non-critical)
-    - [\[I-1\]](#i-1)
-  - [Gas (Optional)](#gas-optional)
+    - [\[L-1\] Empty Function Body - Consider commenting why](#l-1-empty-function-body---consider-commenting-why)
+    - [\[L-2\] Initializers could be front-run](#l-2-initializers-could-be-front-run)
+    - [\[L-3\] Missing critial event emissions](#l-3-missing-critial-event-emissions)
+  - [Informational](#informational)
+    - [\[I-1\] Poor Test Coverage](#i-1-poor-test-coverage)
+    - [\[I-2\] Not using `__gap[50]` for future storage collision mitigation](#i-2-not-using-__gap50-for-future-storage-collision-mitigation)
+    - [\[I-3\] Different decimals may cause confusion. ie: AssetToken has 18, but asset has 6](#i-3-different-decimals-may-cause-confusion-ie-assettoken-has-18-but-asset-has-6)
+    - [\[I-4\] Doesn't follow https://eips.ethereum.org/EIPS/eip-3156](#i-4-doesnt-follow-httpseipsethereumorgeipseip-3156)
+  - [Gas](#gas)
+    - [\[GAS-1\] Using bools for storage incurs overhead](#gas-1-using-bools-for-storage-incurs-overhead)
+    - [\[GAS-2\] Using `private` rather than `public` for constants, saves gas](#gas-2-using-private-rather-than-public-for-constants-saves-gas)
+    - [\[GAS-3\] Unnecessary SLOAD when logging new exchange rate](#gas-3-unnecessary-sload-when-logging-new-exchange-rate)
+  
+<!-- Cover Page Section -->
+<div style="page-break-after: always; padding-top: 5cm;"/>
 
 # Protocol Summary
 
-## Puppy Raffle
+## ThunderLoan
 
-This project is to enter a raffle to win a cute dog NFT. The protocol should do the following:
+The ⚡️ThunderLoan⚡️ protocol is meant to do the following:
 
-1. Call the `enterRaffle` function with the following parameters:
-   1. `address[] participants`: A list of addresses that enter. You can use this to enter yourself multiple times, or yourself and a group of your friends.
-2. Duplicate addresses are not allowed
-3. Users are allowed to get a refund of their ticket & `value` if they call the `refund` function
-4. Every X seconds, the raffle will be able to draw a winner and be minted a random puppy
-5. The owner of the protocol will set a feeAddress to take a cut of the `value`, and the rest of the funds will be sent to the winner of the puppy.
+Give users a way to create flash loans
+Give liquidity providers a way to earn money off their capital
+Liquidity providers can deposit assets into ThunderLoan and be given AssetTokens in return. These AssetTokens gain interest over time depending on how often people take out flash loans!
 
 # Disclaimer
 
@@ -86,46 +101,63 @@ I used the [CodeHawks](https://docs.codehawks.com/hawks-auditors/how-to-evaluate
 ## Repo
 
 ```
-git clone https://github.com/Cyfrin/4-puppy-raffle-audit
-cd 4-puppy-raffle-audit
-make
+git clone https://github.com/Cyfrin/6-thunder-loan-audit
+cd 6-thunder-loan-audit
+make 
 ```
 
 ## Scope
 
 ```
-./src/
-└── PuppyRaffle.sol
+#-- interfaces
+|   #-- IFlashLoanReceiver.sol
+|   #-- IPoolFactory.sol
+|   #-- ITSwapPool.sol
+|   #-- IThunderLoan.sol
+#-- protocol
+|   #-- AssetToken.sol
+|   #-- OracleUpgradeable.sol
+|   #-- ThunderLoan.sol
+#-- upgradedProtocol
+    #-- ThunderLoanUpgraded.sol
 ```
 
-- Commit Hash: 2a47715b30cf11ca82db148704e67652ad679cd8
+- Solc Version: 0.8.20
+- Chain(s) to deploy contract to: Ethereum
+- ERC20s:
+  - USDC
+  - DAI
+  - LINK
+  - WETH
 
-<!-- ## Scope
+- Commit Hash: 8803f851f6b37e99eab2e94b4690c8b70e26b3f6
 
-```
-./src/
-└── PasswordStore.sol
-```
+
 
 ## Roles
 
-- Owner: The user who can set the password and read the password.
-- Outsides: No one else should be able to set or read the password.
+Owner: The owner of the protocol who has the power to upgrade the implementation.
+Liquidity Provider: A user who deposits assets into the protocol to earn interest.
+User: A user who takes out flash loans from the protocol.
 
-# Executive Summary
+<!-- # Known Issues -->
 
-_i spent X hours with Z auditors using Y tools, etc._ -->
+<!-- # Executive Summary
+
+_i spent X hours with Z auditors using Y tools, etc._ --> -->
 
 ## Issues found
 
 | Severity | Number of issues founr |
 | -------- | ---------------------- |
-| High     | 5                      |
-| Medium   | 4                      |
-| Low      | 0                      |
-| Info     | 8                      |
-| Gas      | 1                      |
-| Total    | 18                     |
+| High     | 4                      |
+| Medium   | 3                      |
+| Low      | 3                      |
+| Info     | 4                      |
+| Gas      | 2                      |
+| Total    | 16                     |
+
+<div style="page-break-after: always; break-after:page; padding-top: 2cm;"></div>
 
 # Findings
 
